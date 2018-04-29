@@ -28,8 +28,12 @@ def make_elemwise_mul(shape, tgt, tgt_host, func_name, dtype="float32"):
 
 def make_elemwise_add_by_const(shape, const_k, tgt, tgt_host, func_name,
                                dtype="float32"):
-    """TODO: Your code here"""
+    A = tvm.placeholder(shape, dtype=dtype, name="A")
+    C = tvm.compute(A.shape, lambda *i: A(*i) + const_k, name="C")
 
+    s = tvm.create_schedule(C.op)
+    f = tvm.build(s, [A, C], tgt, target_host=tgt_host, name=func_name)
+    return f
 
 def make_elemwise_mul_by_const(shape, const_k, tgt, tgt_host, func_name,
                             dtype="float32"):
