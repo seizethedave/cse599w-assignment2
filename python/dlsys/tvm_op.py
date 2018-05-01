@@ -50,17 +50,25 @@ def make_elemwise_mul_by_const(shape, const_k, tgt, tgt_host, func_name,
     return f
 
 def make_relu(shape, tgt, tgt_host, func_name, dtype="float32"):
-    """TODO: Your code here"""
-    """Hint: use tvm.max, tvm.const(0, A.dtype)"""
-
+    A = tvm.placeholder(shape, dtype=dtype, name="A")
+    C = tvm.compute(A.shape,
+        lambda *i: tvm.max(tvm.const(0, A.dtype), A(*i)), name="C")
+    s = tvm.create_schedule(C.op)
+    return tvm.build(s, [A, C], tgt, target_host=tgt_host, name=func_name)
 
 def make_relu_gradient(shape, tgt, tgt_host, func_name, dtype="float32"):
-    """TODO: Your code here"""
+    A = tvm.placeholder(shape, dtype=dtype, name="A")
+    B = tvm.placeholder(shape, dtype=dtype, name="B")
+    C = tvm.compute(A.shape,
+        lambda *i: B(*i) * tvm.select(A(*i) > 0, tvm.const(1, A.dtype), tvm.const(0, A.dtype)),
+        "C")
+    s = tvm.create_schedule(C.op)
+    return tvm.build(s, [A, B, C], tgt, target_host=tgt_host, name=func_name)
     """Hint: use tvm.select"""
-
 
 def make_matrix_mul(shapeA, transposeA, shapeB, transposeB, tgt, tgt_host,
                     func_name, dtype="float32"):
+
     """TODO: Your code here"""
     """Hint: use tvm.reduce_axis, tvm.sum"""
     """Hint: treat 4 cases of transposeA, transposeB separately"""
