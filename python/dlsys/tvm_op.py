@@ -64,10 +64,32 @@ def make_relu_gradient(shape, tgt, tgt_host, func_name, dtype="float32"):
         "C")
     s = tvm.create_schedule(C.op)
     return tvm.build(s, [A, B, C], tgt, target_host=tgt_host, name=func_name)
-    """Hint: use tvm.select"""
 
 def make_matrix_mul(shapeA, transposeA, shapeB, transposeB, tgt, tgt_host,
                     func_name, dtype="float32"):
+    sa = shapeA[::-1] if transposeA else shapeA
+    sb = shapeB[::-1] if transposeB else shapeB
+    m = sa[0]
+    n = sb[1]
+    K = sa[1]
+
+    A = tvm.placeholder(shapeA, dtype=dtype, name="A")
+    B = tvm.placeholder(shapeB, dtype=dtype, name="B")
+    k = tvm.reduce_axis((0, K), "k")
+
+    if transposeA and transposeB:
+        func = lambda x, y: tvm.sum(A[k, x] * B[y, k], axis=k)
+    elif not transposeA and transposeB:
+        func = lambda x, y: tvm.sum(A[x, k] * B[y, k], axis=k)
+    elif transposeA and not transposeB:
+        func = lambda x, y: tvm.sum(A[k, x] * B[k, y], axis=k)
+    else: # neither.
+        func = lambda x, y: tvm.sum(A[x, k] * B[k, y], axis=k)
+
+    C = tvm.compute((m, n), func, name="C")
+    s = tvm.create_schedule(C.op)
+
+    # print(tvm.lower(s, [A, B, C], simple_mode=True))
 
     """TODO: Your code here"""
     """Hint: use tvm.reduce_axis, tvm.sum"""
@@ -75,6 +97,7 @@ def make_matrix_mul(shapeA, transposeA, shapeB, transposeB, tgt, tgt_host,
     """Hint: for tvm schedule, use split, reorder, vectorize, parallel"""
     """Hint: debug tvm schedule using tvm.lower"""
 
+    return tvm.build(s, [A, B, C], tgt, target_host=tgt_host, name=func_name)
 
 def make_conv2d(shapeX, shapeF, tgt, tgt_host, func_name, dtype="float32"):
     assert(shapeX[1] == shapeF[1])
