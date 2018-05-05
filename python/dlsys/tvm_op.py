@@ -130,14 +130,31 @@ def make_conv2d(shapeX, shapeF, tgt, tgt_host, func_name, dtype="float32"):
     return tvm.build(s, [X, Filter, Y], tgt, target_host=tgt_host, name=func_name)
 
 def make_matrix_softmax(shape, tgt, tgt_host, func_name, dtype="float32"):
+    X = tvm.placeholder(shape, dtype=dtype, name="X")
 
-    """TODO: Your code here"""
-    """Hint: use tvm.reduce_axis, tvm.sum, tvm.max, tvm.exp"""
-    """Hint: do not reuse the same reduction axis j."""
-    """Hint: implement the following version for better stability
-        e_x = np.exp(x - np.max(x))
-        softmax(x)= e_x / e_x.sum()
-    """
+    j1 = tvm.reduce_axis((0, shape[1]), "j1")
+    j2 = tvm.reduce_axis((0, shape[1]), "j2")
+
+    maxX = tvm.compute((shape[0],),
+        lambda i: tvm.max(X[i, j1], axis=j1),
+        name="maxX")
+
+    numerator = tvm.compute(shape,
+        lambda i, j: tvm.exp(X[i, j] - maxX[i]),
+        name="numerator")
+
+    denominator = tvm.compute((shape[0],),
+        lambda i: tvm.sum(numerator[i, j2], axis=j2),
+        name="denominator")
+
+    Y = tvm.compute(shape,
+        lambda i, j: numerator[i, j] / denominator[i],
+        name="Y")
+
+    s = tvm.create_schedule(Y.op)
+    print(tvm.lower(s, [X, Y], simple_mode=True))
+    f = tvm.build(s, [X, Y], tgt, target_host=tgt_host, name=func_name)
+    return f
 
 def make_matrix_softmax_cross_entropy(shape, tgt, tgt_host, func_name,
                                       dtype="float32"):
