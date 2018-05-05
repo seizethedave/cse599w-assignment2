@@ -89,9 +89,14 @@ def make_matrix_mul(shapeA, transposeA, shapeB, transposeB, tgt, tgt_host,
     C = tvm.compute((m, n), func, name="C")
     s = tvm.create_schedule(C.op)
 
-    # print(tvm.lower(s, [A, B, C], simple_mode=True))
+    """
+    SPLIT_FACTOR = 8
 
-    """TODO: Your code here"""
+    xo, xi = s[C].split(C.op.axis[0], factor=SPLIT_FACTOR)
+    print(xo, xi)
+    print(tvm.lower(s, [A, B, C], simple_mode=True))
+    """
+
     """Hint: use tvm.reduce_axis, tvm.sum"""
     """Hint: treat 4 cases of transposeA, transposeB separately"""
     """Hint: for tvm schedule, use split, reorder, vectorize, parallel"""
@@ -100,14 +105,29 @@ def make_matrix_mul(shapeA, transposeA, shapeB, transposeB, tgt, tgt_host,
     return tvm.build(s, [A, B, C], tgt, target_host=tgt_host, name=func_name)
 
 def make_conv2d(shapeX, shapeF, tgt, tgt_host, func_name, dtype="float32"):
-    assert(shapeX[1] == shapeF[1])
+    assert(shapeX[1] == shapeF[1]) # Same number of channels.
     N, C, H, W = shapeX
     M, C, R, S = shapeF
 
-    """TODO: Your code here"""
-    """Hint: use tvm.reduce_axis, tvm.sum"""
-    """Hint: go by conv2d definition. Treat stride=1, padding=0 case only."""
-    """For a challenge, treat the general case for stride and padding."""
+    X = tvm.placeholder(shapeX, dtype=dtype, name="X")
+    Filter = tvm.placeholder(shapeF, dtype=dtype, name="Filter")
+
+    dchannel = tvm.reduce_axis((0, C), "dchannel")
+    di = tvm.reduce_axis((0, S), "di")
+    dj = tvm.reduce_axis((0, R), "dj")
+
+    out_shape = (shapeX[0], shapeF[0], H - R + 1, W - S + 1)
+
+    Y = tvm.compute(
+        out_shape,
+        lambda n, f, i, j: tvm.sum(
+            X[n, dchannel, i + di, j + dj] * Filter[f, dchannel, di, dj],
+            axis=[dchannel, di, dj]),
+        name="Y"
+        )
+
+    s = tvm.create_schedule(Y.op)
+    return tvm.build(s, [X, Filter, Y], tgt, target_host=tgt_host, name=func_name)
 
 def make_matrix_softmax(shape, tgt, tgt_host, func_name, dtype="float32"):
 
