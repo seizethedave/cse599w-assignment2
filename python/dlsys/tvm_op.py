@@ -172,22 +172,25 @@ def make_matrix_softmax_cross_entropy(shape, tgt, tgt_host, func_name,
         lambda i: tvm.sum(numerator[i, j2], axis=j2),
         name="denominator")
 
-    log_prod = tvm.compute(shape,
-        lambda i, j: Y_orig[i, j] * (tvm.log(numerator[i, j]) - tvm.log(denominator[i])),
-        name="log_prod")
-
     m1 = tvm.reduce_axis((0, shape[0]), "m1")
     m2 = tvm.reduce_axis((0, shape[1]), "m2")
 
     cross_entropy_sum = tvm.compute((1,),
-        lambda i: tvm.sum(log_prod[m1, m2] / -shape[0], axis=[m1, m2]),
+        lambda i: tvm.sum(
+            Y_orig[m1, m2] * tvm.log(numerator[m1, m2] / denominator[m1]),
+            axis=[m1, m2]),
         name="cross_entropy_sum")
 
-    s = tvm.create_schedule(cross_entropy_sum.op)
+    negated = tvm.compute((1,),
+        lambda i: -cross_entropy_sum[i] / tvm.const(shape[0], dtype),
+        name="negated")
 
-    #print(tvm.lower(s, [X, Y_orig, cross_entropy_sum], simple_mode=True))
 
-    return tvm.build(s, [X, Y_orig, cross_entropy_sum], tgt, target_host=tgt_host, name=func_name)
+    s = tvm.create_schedule(negated.op)
+
+    print(tvm.lower(s, [X, Y_orig, negated], simple_mode=True))
+
+    return tvm.build(s, [X, Y_orig, negated], tgt, target_host=tgt_host, name=func_name)
 
 def make_reduce_sum_axis_zero(shape, tgt, tgt_host, func_name, dtype="float32"):
     A = tvm.placeholder(shape, dtype=dtype, name="A")
