@@ -94,8 +94,8 @@ def make_matrix_mul(shapeA, transposeA, shapeB, transposeB, tgt, tgt_host,
 
     xo, xi = s[C].split(C.op.axis[0], factor=SPLIT_FACTOR)
     print(xo, xi)
-    print(tvm.lower(s, [A, B, C], simple_mode=True))
     """
+    # print(tvm.lower(s, [A, B, C], simple_mode=True))
 
     """Hint: use tvm.reduce_axis, tvm.sum"""
     """Hint: treat 4 cases of transposeA, transposeB separately"""
@@ -132,7 +132,6 @@ def make_conv2d(shapeX, shapeF, tgt, tgt_host, func_name, dtype="float32"):
 def make_matrix_softmax(shape, tgt, tgt_host, func_name, dtype="float32"):
     X = tvm.placeholder(shape, dtype=dtype, name="X")
     j1 = tvm.reduce_axis((0, shape[1]), "j1")
-    j2 = tvm.reduce_axis((0, shape[1]), "j2")
 
     maxX = tvm.compute((shape[0],),
         lambda i: tvm.max(X[i, j1], axis=j1),
@@ -141,6 +140,8 @@ def make_matrix_softmax(shape, tgt, tgt_host, func_name, dtype="float32"):
     numerator = tvm.compute(shape,
         lambda i, j: tvm.exp(X[i, j] - maxX[i]),
         name="numerator")
+
+    j2 = tvm.reduce_axis((0, shape[1]), "j2")
 
     denominator = tvm.compute((shape[0],),
         lambda i: tvm.sum(numerator[i, j2], axis=j2),
@@ -182,15 +183,16 @@ def make_matrix_softmax_cross_entropy(shape, tgt, tgt_host, func_name,
         name="cross_entropy_sum")
 
     negated = tvm.compute((1,),
-        lambda i: -cross_entropy_sum[i] / tvm.const(shape[0], dtype),
+        lambda i: -cross_entropy_sum[i] / shape[0],
         name="negated")
 
 
     s = tvm.create_schedule(negated.op)
 
-    print(tvm.lower(s, [X, Y_orig, negated], simple_mode=True))
+    # print(tvm.lower(s, [X, Y_orig, negated], simple_mode=True))
 
-    return tvm.build(s, [X, Y_orig, negated], tgt, target_host=tgt_host, name=func_name)
+    return tvm.build(s, [X, Y_orig, negated], tgt,
+        target_host=tgt_host, name=func_name)
 
 def make_reduce_sum_axis_zero(shape, tgt, tgt_host, func_name, dtype="float32"):
     A = tvm.placeholder(shape, dtype=dtype, name="A")

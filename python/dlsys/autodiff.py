@@ -206,7 +206,8 @@ class MulOp(Op):
         return broadcast_rule(input_shapes[0], input_shapes[1])
 
     def compiled_func(self, node, input_shapes, tgt, tgt_host):
-        """TODO: Your code here"""
+        return tvm_op.make_elemwise_mul(
+            input_shapes[0], tgt, tgt_host, "make_elemwise_mul")
 
 class MulByConstOp(Op):
     def __call__(self, node_A, const_val):
@@ -224,11 +225,13 @@ class MulByConstOp(Op):
         return [node.const_attr * output_grad]
 
     def infer_shape(self, node, input_shapes):
-        """TODO: Your code here"""
         return input_shapes[0]
 
     def compiled_func(self, node, input_shapes, tgt, tgt_host):
-        """TODO: Your code here"""
+        return tvm_op.make_elemwise_mul_by_const(
+            input_shapes[0], node.const_attr,
+            tgt, tgt_host,
+            "make_elemwise_mul_by_const")
 
 class MatMulOp(Op):
     def __call__(self, node_A, node_B, trans_A=False, trans_B=False):
@@ -275,11 +278,21 @@ class MatMulOp(Op):
         return [lhs_grad, rhs_grad]
 
     def infer_shape(self, node, input_shapes):
-        return (input_shapes[0][0], input_shapes[1][1])
+        if not node.matmul_attr_trans_A and not node.matmul_attr_trans_B:
+            return (input_shapes[0][0], input_shapes[1][1])
+        elif node.matmul_attr_trans_A and not node.matmul_attr_trans_B:
+            return (input_shapes[0][1], input_shapes[1][1])
+        elif not node.matmul_attr_trans_A and node.matmul_attr_trans_B:
+            return (input_shapes[0][0], input_shapes[1][0])
+        else: # node.matmul_attr_trans_A and node.matmul_attr_trans_B:
+            return (input_shapes[0][1], input_shapes[1][0])
 
     def compiled_func(self, node, input_shapes, tgt, tgt_host):
-        """TODO: Your code here"""
-
+        return tvm_op.make_matrix_mul(
+            input_shapes[0], node.matmul_attr_trans_A,
+            input_shapes[1], node.matmul_attr_trans_B,
+            tgt, tgt_host,
+            "make_matrix_mul")
 
 class PlaceholderOp(Op):
     def __call__(self):
@@ -317,8 +330,15 @@ class ZerosLikeOp(Op):
 
     def infer_shape(self, node, input_shapes):
         """If input_shape is a vector, simpler to return (1,)"""
-        print("ZerosLike.infer_shape({}, {})".format(node, input_shapes))
-        """TODO: Your code here"""
+
+        return input_shapes[0]
+
+        """
+        if len(input_shapes[0]) == 1:
+            return (input_shapes[0],)
+        else:
+            return
+        """
 
     def compiled_func(self, node, input_shapes, tgt, tgt_host):
         return None
@@ -341,9 +361,8 @@ class OnesLikeOp(Op):
         return [zeroslike_op(node.inputs[0])]
 
     def infer_shape(self, node, input_shapes):
-        print("OnesLikeOp.infer_shape({}, {})".format(node, input_shapes))
         """If input_shape is a vector, simpler to return (1,)"""
-        """TODO: Your code here"""
+        return input_shapes[0]
 
     def compiled_func(self, node, input_shapes, tgt, tgt_host):
         return None
@@ -401,11 +420,13 @@ class BroadcastToOp(Op):
         return [grad_A, grad_B]
 
     def infer_shape(self, node, input_shapes):
-        print("BroadcastToOp")
-        """TODO: Your code here"""
+        # shape #1 = the target shape.
+        return input_shapes[1]
 
     def compiled_func(self, node, input_shapes, tgt, tgt_host):
-        """TODO: Your code here"""
+        return tvm_op.make_broadcast_to(
+            input_shapes[0], input_shapes[1],
+            tgt, tgt_host, "make_broadcast_to")
 
 def softmax_func(y):
     """Numerically stable softmax."""
@@ -438,8 +459,8 @@ class SoftmaxCrossEntropyOp(Op):
         return (1,)
 
     def compiled_func(self, node, input_shapes, tgt, tgt_host):
-        print("SoftmaxCrossEntropyOp.compiled_func {} {}".format(node, input_shapes))
-        """TODO: Your code here"""
+        return tvm_op.make_matrix_softmax_cross_entropy(input_shapes[0], tgt, tgt_host,
+            "make_matrix_softmax_cross_entropy")
 
 class SoftmaxOp(Op):
     def __call__(self, node_A):
@@ -458,12 +479,11 @@ class SoftmaxOp(Op):
         raise NotImplementedError
 
     def infer_shape(self, node, input_shapes):
-        print("SoftmaxOp {} {}".format(node, input_shapes))
-        """TODO: Your code here"""
+        return input_shapes[0]
 
     def compiled_func(self, node, input_shapes, tgt, tgt_host):
-        print("SoftmaxOp.compiled_func {} {}".format(node, input_shapes))
-        """TODO: Your code here"""
+        return tvm_op.make_matrix_softmax(input_shapes[0], tgt, tgt_host,
+            "make_matrix_softmax")
 
 
 class ReluOp(Op):
@@ -480,13 +500,11 @@ class ReluOp(Op):
         return [relu_gradient_op(node.inputs[0], output_grad)]
 
     def infer_shape(self, node, input_shapes):
-        print("ReluOp {} {}".format(node, input_shapes))
-        """TODO: Your code here"""
+        return input_shapes[0]
 
     def compiled_func(self, node, input_shapes, tgt, tgt_host):
-        print("ReluOp.compiled_func {} {}".format(node, input_shapes))
-        """TODO: Your code here"""
-
+        return tvm_op.make_relu(input_shapes[0], tgt, tgt_host,
+            "make_relu")
 
 class ReluGradientOp(Op):
     def __call__(self, node_A, node_B):
@@ -503,12 +521,12 @@ class ReluGradientOp(Op):
         raise NotImplementedError
 
     def infer_shape(self, node, input_shapes):
-        print("ReluGradientOp {} {}".format(node, input_shapes))
-        """TODO: Your code here"""
+        return input_shapes[0]
 
     def compiled_func(self, node, input_shapes, tgt, tgt_host):
-        print("ReluGradientOp.compiled_func {} {}".format(node, input_shapes))
-        """TODO: Your code here"""
+        return tvm_op.make_relu_gradient(input_shapes[0], tgt, tgt_host,
+            "make_relu_gradient")
+
 
 # Create global singletons of operators.
 add_op = AddOp()
@@ -566,7 +584,7 @@ class Executor(object):
         feed_shapes: node->shapes mapping for feed_dict nodes.
         """
         def lookup_node_shape(n):
-            return feed_shapes.get(n) or self.node_to_shape_map.get(n)
+            return feed_shapes.get(n) or self.node_to_shape_map[n]
 
         self.node_to_shape_map = {}
 
@@ -587,12 +605,13 @@ class Executor(object):
         ----------
         feed_shapes: node->shapes mapping for feed_dict nodes.
         """
+        def lookup_node_shape(n):
+            return feed_shapes.get(n) or self.node_to_shape_map[n]
+
         self.node_to_arr_map = {}
 
-        for node, shape in feed_shapes.items():
-            self.node_to_arr_map[node] = tvm.ndarray.empty(
-                self.node_to_shape_map[node]
-            )
+        for node in filter(lambda n: n not in feed_shapes, self.topo_order):
+            self.node_to_arr_map[node] = tvm.ndarray.empty(lookup_node_shape(node))
 
     def compile_funcs(self, feed_shapes):
         """Compile tvm ops to native code.
@@ -605,7 +624,7 @@ class Executor(object):
         feed_shapes: node->shapes mapping for feed_dict nodes.
         """
         def lookup_node_shape(n):
-            return feed_shapes.get(n) or self.node_to_shape_map.get(n)
+            return feed_shapes.get(n) or self.node_to_shape_map[n]
 
         self.node_to_compiled_func = {}
 
@@ -638,8 +657,6 @@ class Executor(object):
                 "feed_dict value type not supported"
             node_to_val_map[node] = value
 
-        print(node_to_val_map)
-
         # collect shapes for all placeholders
         feed_shapes = {}
         for node in node_to_val_map:
@@ -648,7 +665,6 @@ class Executor(object):
         # infer shape if feed_shapes changed since last run
         # e.g. call run() on test data after trainng
         if not are_feed_shapes_equal(feed_shapes, self.feed_shapes):
-            print("Calling init functions")
             self.infer_shape(feed_shapes)
             self.feed_shapes = feed_shapes
             self.memory_plan(feed_shapes)
@@ -757,12 +773,12 @@ def broadcast_rule(shape_a, shape_b):
     else:
         longer_shape, shorter_shape = shape_b, shape_a
     len_diff = len(longer_shape) - len(shorter_shape)
-    for i in xrange(len_diff):
+    for i in range(len_diff):
         # pad with leading 1s
         shorter_shape = (1,) + shorter_shape
     assert len(shorter_shape) == len(longer_shape)
     output_shape = list(longer_shape)
-    for i in xrange(len(output_shape)):
+    for i in range(len(output_shape)):
         assert (shorter_shape[i] == longer_shape[i]) \
             or (shorter_shape[i] == 1) \
             or (longer_shape[i] == 1)
