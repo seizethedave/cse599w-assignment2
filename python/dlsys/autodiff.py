@@ -179,7 +179,7 @@ class AddByConstOp(Op):
         return [output_grad]
 
     def infer_shape(self, node, input_shapes):
-        return broadcast_rule(input_shapes[0], input_shapes[1])
+        return input_shapes[0]
 
     def compiled_func(self, node, input_shapes, tgt, tgt_host):
         return tvm_op.make_elemwise_add_by_const(input_shapes[0], tgt, tgt_host,
@@ -203,7 +203,7 @@ class MulOp(Op):
 
     def infer_shape(self, node, input_shapes):
         """Need to handle input_vals[0].shape != input_vals[1].shape"""
-        """TODO: Your code here"""
+        return broadcast_rule(input_shapes[0], input_shapes[1])
 
     def compiled_func(self, node, input_shapes, tgt, tgt_host):
         """TODO: Your code here"""
@@ -225,6 +225,7 @@ class MulByConstOp(Op):
 
     def infer_shape(self, node, input_shapes):
         """TODO: Your code here"""
+        return input_shapes[0]
 
     def compiled_func(self, node, input_shapes, tgt, tgt_host):
         """TODO: Your code here"""
@@ -274,7 +275,7 @@ class MatMulOp(Op):
         return [lhs_grad, rhs_grad]
 
     def infer_shape(self, node, input_shapes):
-        """TODO: Your code here"""
+        return (input_shapes[0][0], input_shapes[1][1])
 
     def compiled_func(self, node, input_shapes, tgt, tgt_host):
         """TODO: Your code here"""
@@ -316,6 +317,7 @@ class ZerosLikeOp(Op):
 
     def infer_shape(self, node, input_shapes):
         """If input_shape is a vector, simpler to return (1,)"""
+        print("ZerosLike.infer_shape({}, {})".format(node, input_shapes))
         """TODO: Your code here"""
 
     def compiled_func(self, node, input_shapes, tgt, tgt_host):
@@ -339,6 +341,7 @@ class OnesLikeOp(Op):
         return [zeroslike_op(node.inputs[0])]
 
     def infer_shape(self, node, input_shapes):
+        print("OnesLikeOp.infer_shape({}, {})".format(node, input_shapes))
         """If input_shape is a vector, simpler to return (1,)"""
         """TODO: Your code here"""
 
@@ -398,6 +401,7 @@ class BroadcastToOp(Op):
         return [grad_A, grad_B]
 
     def infer_shape(self, node, input_shapes):
+        print("BroadcastToOp")
         """TODO: Your code here"""
 
     def compiled_func(self, node, input_shapes, tgt, tgt_host):
@@ -431,9 +435,10 @@ class SoftmaxCrossEntropyOp(Op):
         return [grad_A, grad_B]
 
     def infer_shape(self, node, input_shapes):
-        """TODO: Your code here"""
+        return (1,)
 
     def compiled_func(self, node, input_shapes, tgt, tgt_host):
+        print("SoftmaxCrossEntropyOp.compiled_func {} {}".format(node, input_shapes))
         """TODO: Your code here"""
 
 class SoftmaxOp(Op):
@@ -453,9 +458,11 @@ class SoftmaxOp(Op):
         raise NotImplementedError
 
     def infer_shape(self, node, input_shapes):
+        print("SoftmaxOp {} {}".format(node, input_shapes))
         """TODO: Your code here"""
 
     def compiled_func(self, node, input_shapes, tgt, tgt_host):
+        print("SoftmaxOp.compiled_func {} {}".format(node, input_shapes))
         """TODO: Your code here"""
 
 
@@ -473,9 +480,11 @@ class ReluOp(Op):
         return [relu_gradient_op(node.inputs[0], output_grad)]
 
     def infer_shape(self, node, input_shapes):
+        print("ReluOp {} {}".format(node, input_shapes))
         """TODO: Your code here"""
 
     def compiled_func(self, node, input_shapes, tgt, tgt_host):
+        print("ReluOp.compiled_func {} {}".format(node, input_shapes))
         """TODO: Your code here"""
 
 
@@ -494,9 +503,11 @@ class ReluGradientOp(Op):
         raise NotImplementedError
 
     def infer_shape(self, node, input_shapes):
+        print("ReluGradientOp {} {}".format(node, input_shapes))
         """TODO: Your code here"""
 
     def compiled_func(self, node, input_shapes, tgt, tgt_host):
+        print("ReluGradientOp.compiled_func {} {}".format(node, input_shapes))
         """TODO: Your code here"""
 
 # Create global singletons of operators.
@@ -554,7 +565,14 @@ class Executor(object):
         ----------
         feed_shapes: node->shapes mapping for feed_dict nodes.
         """
-        """TODO: Your code here"""
+        def lookup_node_shape(n):
+            return feed_shapes.get(n) or self.node_to_shape_map.get(n)
+
+        self.node_to_shape_map = {}
+
+        for node in filter(lambda n: n not in feed_shapes, self.topo_order):
+            shapes = [lookup_node_shape(in_node) for in_node in node.inputs]
+            self.node_to_shape_map[node] = node.op.infer_shape(node, shapes)
 
     def memory_plan(self, feed_shapes):
         """Allocates tvm.nd.array for every node except feed_dict nodes.
@@ -569,7 +587,12 @@ class Executor(object):
         ----------
         feed_shapes: node->shapes mapping for feed_dict nodes.
         """
-        """TODO: Your code here"""
+        self.node_to_arr_map = {}
+
+        for node, shape in feed_shapes.items():
+            self.node_to_arr_map[node] = tvm.ndarray.empty(
+                self.node_to_shape_map[node]
+            )
 
     def compile_funcs(self, feed_shapes):
         """Compile tvm ops to native code.
@@ -581,7 +604,16 @@ class Executor(object):
         ----------
         feed_shapes: node->shapes mapping for feed_dict nodes.
         """
-        """TODO: Your code here"""
+        def lookup_node_shape(n):
+            return feed_shapes.get(n) or self.node_to_shape_map.get(n)
+
+        self.node_to_compiled_func = {}
+
+        for node in filter(lambda n: n not in feed_shapes, self.topo_order):
+            shapes = [lookup_node_shape(in_node) for in_node in node.inputs]
+
+            self.node_to_compiled_func[node] = node.op.compiled_func(
+                node, shapes, self.tgt, self.tgt_host)
 
     def run(self, feed_dict, convert_to_numpy_ret_vals=False):
         """
@@ -606,6 +638,8 @@ class Executor(object):
                 "feed_dict value type not supported"
             node_to_val_map[node] = value
 
+        print(node_to_val_map)
+
         # collect shapes for all placeholders
         feed_shapes = {}
         for node in node_to_val_map:
@@ -613,7 +647,8 @@ class Executor(object):
 
         # infer shape if feed_shapes changed since last run
         # e.g. call run() on test data after trainng
-        if (not are_feed_shapes_equal(feed_shapes, self.feed_shapes)):
+        if not are_feed_shapes_equal(feed_shapes, self.feed_shapes):
+            print("Calling init functions")
             self.infer_shape(feed_shapes)
             self.feed_shapes = feed_shapes
             self.memory_plan(feed_shapes)
