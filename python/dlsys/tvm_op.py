@@ -89,21 +89,28 @@ def make_matrix_mul(shapeA, transposeA, shapeB, transposeB, tgt, tgt_host,
     C = tvm.compute((m, n), func, name="C")
     s = tvm.create_schedule(C.op)
 
+    # Blocking.
+
     SPLIT_FACTOR = 16
 
-    if not transposeA and not transposeB:
-        xo, xi = s[C].split(C.op.axis[0], factor=SPLIT_FACTOR)
-        s[C].vectorize(xo)
-    else:
-        xo, xi = s[C].split(C.op.axis[1], factor=SPLIT_FACTOR)
-        s[C].vectorize(xi)
+    xo, xi = s[C].split(C.op.axis[1], factor=SPLIT_FACTOR)
+    print(xo, xi)
 
-    s[C].parallel(xo)
     s[C].reorder(xi, xo)
+    s[C].vectorize(xi)
+    s[C].parallel(xo)
 
-    # print(tvm.lower(s, [A, B, C], simple_mode=True))
 
-    return tvm.build(s, [A, B, C], tgt, target_host=tgt_host, name=func_name)
+    print(tvm.lower(s, [A, B, C], simple_mode=True))
+
+    """Hint: use tvm.reduce_axis, tvm.sum"""
+    """Hint: treat 4 cases of transposeA, transposeB separately"""
+    """Hint: for tvm schedule, use split, reorder, vectorize, parallel"""
+    """Hint: debug tvm schedule using tvm.lower"""
+
+    func = tvm.build(s, [A, B, C], tgt, target_host=tgt_host, name=func_name)
+
+    return func
 
 def make_conv2d(shapeX, shapeF, tgt, tgt_host, func_name, dtype="float32"):
     assert(shapeX[1] == shapeF[1]) # Same number of channels.
