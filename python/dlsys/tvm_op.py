@@ -92,10 +92,11 @@ def make_matrix_mul(shapeA, transposeA, shapeB, transposeB, tgt, tgt_host,
     SPLIT_FACTOR = 16
     xo, xi = s[C].split(C.op.axis[1], factor=SPLIT_FACTOR)
 
-    s[C].reorder(xi, xo)
+    s[C].reorder(xi, xo, k)
     s[C].vectorize(xi)
     s[C].parallel(xo)
 
+    # print(transposeA, transposeB)
     # print(tvm.lower(s, [A, B, C], simple_mode=True))
 
     return tvm.build(s, [A, B, C], tgt, target_host=tgt_host, name=func_name)
